@@ -1,23 +1,29 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
-#include <ESP32Encoder.h>
 #include <Keypad.h>
 #include "DisplayManager.h" 
+#include "CustomEncoder.h" 
 
-// --- MAC ADDRESS MASTER (Inserisci quello del tuo Master) ---
+// --- MAC ADDRESS MASTER ---
 uint8_t broadcastAddress[] = {0xDC, 0xB4, 0xD9, 0x38, 0x20, 0x54}; 
 
 // --- PIN SPECIALI ---
 #define BATTERY_PIN 35
-#define POWER_BTN_PIN 15 // Pin RTC per risvegliare dal Deep Sleep
+#define POWER_BTN_PIN 15 
+#define ENC1_SW 34
+#define ENC2_SW 36
+#define ENC3_SW 39
+#define ENC4_SW 0
 
-// --- TIMERS ---
-#define SCREEN_TIMEOUT 1200000 // 20 Minuti in millisecondi
-#define SLEEP_TIMEOUT 3600000  // 1 Ora in millisecondi
+// --- TIMERS E COSTANTI ---
+#define SCREEN_TIMEOUT 1200000UL 
+#define SLEEP_TIMEOUT 3600000UL  
+const int ENC_HOLD_MS = 60; // Millisecondi in cui il pulsante rotazione rimane "premuto" per Virpil
+
 bool isScreenOn = true;
 
-// --- SETUP MATRICE 4x4 ---
+// --- SETUP MATRICE ---
 const byte ROWS = 4; 
 const byte COLS = 4; 
 char keys[ROWS][COLS] = {
@@ -42,29 +48,27 @@ struct_message myData;
 esp_now_peer_info_t peerInfo;
 bool masterConnected = false; 
 
-// --- VARIABILI HARDWARE ---
-ESP32Encoder encoder1;
-ESP32Encoder encoder2;
-ESP32Encoder encoder3_pot;
-ESP32Encoder encoder4_pot;
+// --- INIZIALIZZAZIONE ENCODER (ttable) ---
+CustomEncoder encoder1(5, 18, false);       
+CustomEncoder encoder2(19, 21, false);      
+CustomEncoder encoder3_pot(22, 23, true);  
+CustomEncoder encoder4_pot(1, 3, true);    
 
-long lastEnc1 = 0;
-long lastEnc2 = 0;
-
-// --- VARIABILI DI STATO E TEMPO ---
+// --- VARIABILI DI STATO ---
 int batteryPct = 100;
 unsigned long lastBatCheck = 0;
 unsigned long lastActivityTime = 0; 
-bool justWokeUp = true;
-
 String lastActionText = "";
 unsigned long lastActionTime = 0;
 uint32_t lastButtonsState = 0;
-int lastAxis1State = 16383;
-int lastAxis2State = 16383;
+
+// Variabili per mantenere premuti gli encoder abbastanza a lungo per ESP-NOW
+unsigned long enc1_CW_Time = 0;
+unsigned long enc1_CCW_Time = 0;
+unsigned long enc2_CW_Time = 0;
+unsigned long enc2_CCW_Time = 0;
 
 // --- FUNZIONI ---
-
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   masterConnected = (status == ESP_NOW_SEND_SUCCESS);
 }
@@ -75,23 +79,24 @@ int getBatteryPercentage() {
     return constrain(map(voltage * 100, 330, 420, 0, 100), 0, 100);
 }
 
-// --- SETUP ---
 void setup() {
+// 1. RIABILITA LA SERIALE PER IL DEBUG
     Serial.begin(115200);
-
+    delay(1000); // Piccola pausa per far avviare il monitor seriale
+    Serial.println("--- AVVIO SLAVE DEBUGER ---");    
     initDisplay();
     drawBootSequence();
 
     pinMode(POWER_BTN_PIN, INPUT_PULLUP);
+    pinMode(ENC1_SW, INPUT);
+    pinMode(ENC2_SW, INPUT);
+    pinMode(ENC3_SW, INPUT);
+    pinMode(ENC4_SW, INPUT_PULLUP); 
 
-    ESP32Encoder::useInternalWeakPullResistors = UP;
-    encoder1.attachHalfQuad(16, 5); 
-    encoder2.attachHalfQuad(18, 17); 
-    encoder3_pot.attachHalfQuad(21, 19); 
-    encoder4_pot.attachHalfQuad(23, 22); 
-    
-    encoder3_pot.setCount(16383);
-    encoder4_pot.setCount(16383);
+    encoder1.begin();
+    encoder2.begin();
+    encoder3_pot.begin();
+    encoder4_pot.begin();
 
     analogReadResolution(12);
 
@@ -108,43 +113,25 @@ void setup() {
     lastActivityTime = millis(); 
 }
 
-// --- LOOP PRINCIPALE ---
 void loop() {
     bool userDidSomething = false;
 
-    // --- 0. GESTIONE PULSANTE DI ACCENSIONE / DEEP SLEEP ---
+    // --- 0. GESTIONE ACCENSIONE ---
     bool powerBtnState = !digitalRead(POWER_BTN_PIN); 
     static unsigned long powerBtnPressTime = 0;
     static bool isPowerBtnHeld = false;
 
     if (powerBtnState) {
-        if (!isPowerBtnHeld) {
-            isPowerBtnHeld = true;
-            powerBtnPressTime = millis();
-        }
-        
-        unsigned long heldDuration = millis() - powerBtnPressTime;
-        
-        if (!isScreenOn) {
-            isScreenOn = true;
-            lastActivityTime = millis();
-            showWelcomeMessage();
-        }
+        if (!isPowerBtnHeld) { isPowerBtnHeld = true; powerBtnPressTime = millis(); }
+        if (!isScreenOn) { isScreenOn = true; lastActivityTime = millis(); showWelcomeMessage(); }
 
-        if (heldDuration > 1000) {
-            int secondsLeft = 10 - ((heldDuration - 1000) / 1000);
-            
+        if (millis() - powerBtnPressTime > 1000) {
+            int secondsLeft = 10 - (((millis() - powerBtnPressTime) - 1000) / 1000);
             if (secondsLeft <= 0) {
-                // TIMER SCADUTO
-                showReleaseMsg(); // Funzione nel DisplayManager per "RILASCIA IL TASTO"
-
-                while (!digitalRead(POWER_BTN_PIN)) {
-                    delay(50);
-                }
-                
+                showReleaseMsg(); 
+                while (!digitalRead(POWER_BTN_PIN)) delay(50);
                 delay(500);
-                turnOffScreen(); // Spegne lo schermo tramite il manager
-
+                turnOffScreen(); 
                 esp_sleep_enable_ext0_wakeup((gpio_num_t)POWER_BTN_PIN, 0); 
                 esp_deep_sleep_start();
             } else {
@@ -152,59 +139,95 @@ void loop() {
                 return; 
             }
         }
-    } else {
-        if (isPowerBtnHeld) {
-            isPowerBtnHeld = false;
-            lastActivityTime = millis(); 
-        }
+    } else if (isPowerBtnHeld) {
+        isPowerBtnHeld = false; lastActivityTime = millis(); 
     }
 
-    // --- 1. LETTURA INGRESSI ---
+    // --- 1. MATRICE (Azzera i bit della matrice per leggerli da capo) ---
     if (matrixKeypad.getKeys()) {
         for (int i=0; i<LIST_MAX; i++) {
             if (matrixKeypad.key[i].stateChanged) {
-                if (matrixKeypad.key[i].kstate == PRESSED || matrixKeypad.key[i].kstate == HOLD) {
-                    bitSet(currentMatrixState, matrixKeypad.key[i].kchar);
-                }
-                if (matrixKeypad.key[i].kstate == RELEASED || matrixKeypad.key[i].kstate == IDLE) {
-                    bitClear(currentMatrixState, matrixKeypad.key[i].kchar);
-                }
+                if (matrixKeypad.key[i].kstate == PRESSED || matrixKeypad.key[i].kstate == HOLD) bitSet(currentMatrixState, matrixKeypad.key[i].kchar);
+                if (matrixKeypad.key[i].kstate == RELEASED || matrixKeypad.key[i].kstate == IDLE) bitClear(currentMatrixState, matrixKeypad.key[i].kchar);
             }
         }
     }
-    myData.buttons = currentMatrixState;
+    // Copia i tasti della matrice puliti nel pacchetto (questo cancella i bit 16-31)
+    myData.buttons = currentMatrixState; 
 
-    long newEnc1 = encoder1.getCount() / 2;
-    if (newEnc1 > lastEnc1) { bitSet(myData.buttons, 30); } 
-    if (newEnc1 < lastEnc1) { bitSet(myData.buttons, 31); } 
-    lastEnc1 = newEnc1;
+    // --- 2. CLICK ENCODER ---
+    if (!digitalRead(ENC1_SW)) { bitSet(myData.buttons, 16); Serial.println("Premuto: SW1 (Pin 34)"); }
+    if (!digitalRead(ENC2_SW)) { bitSet(myData.buttons, 17); Serial.println("Premuto: SW2 (Pin 36)"); }
+    if (!digitalRead(ENC3_SW)) { bitSet(myData.buttons, 18); Serial.println("Premuto: SW3 (Pin 39)"); }
+    if (!digitalRead(ENC4_SW)) bitSet(myData.buttons, 19);
 
-    long newEnc2 = encoder2.getCount() / 2;
-    if (newEnc2 > lastEnc2) { bitSet(myData.buttons, 28); } 
-    if (newEnc2 < lastEnc2) { bitSet(myData.buttons, 29); } 
-    lastEnc2 = newEnc2;
-
-    int rawAxis1 = encoder3_pot.getCount() * 500; 
-    int rawAxis2 = encoder4_pot.getCount() * 500;
+// --- 3. LETTURA ROTAZIONE E "IMPULSE EXTENDER" ---
     
-    myData.axis1 = constrain(rawAxis1, 0, 32767);
-    myData.axis2 = constrain(rawAxis2, 0, 32767);
-    
-    if (rawAxis1 > 32767) encoder3_pot.setCount(32767 / 500);
-    if (rawAxis1 < 0) encoder3_pot.setCount(0);
-    if (rawAxis2 > 32767) encoder4_pot.setCount(32767 / 500);
-    if (rawAxis2 < 0) encoder4_pot.setCount(0);
-
-    // --- 2. RILEVAMENTO INPUT PER HUD ---
-    if (abs(myData.axis1 - lastAxis1State) > 500) { 
-        lastActionText = "ASSE 1: " + String(myData.axis1);
-        lastAxis1State = myData.axis1;
-        userDidSomething = true;
+    // Encoder 1
+    uint8_t res1 = encoder1.process();
+    if (res1 == DIR_CW) {
+        enc1_CW_Time = millis();
+        Serial.println("Encoder 1: Scatto a DESTRA (Tasto 30)");
+    }
+    if (res1 == DIR_CCW) {
+        enc1_CCW_Time = millis();
+        Serial.println("Encoder 1: Scatto a SINISTRA (Tasto 31)");
     }
     
-    if (abs(myData.axis2 - lastAxis2State) > 500) {
-        lastActionText = "ASSE 2: " + String(myData.axis2);
-        lastAxis2State = myData.axis2;
+    if (millis() - enc1_CW_Time < ENC_HOLD_MS) bitSet(myData.buttons, 30);
+    if (millis() - enc1_CCW_Time < ENC_HOLD_MS) bitSet(myData.buttons, 31);
+    
+    // Encoder 2
+    uint8_t res2 = encoder2.process();
+    if (res2 == DIR_CW) {
+        enc2_CW_Time = millis();
+        Serial.println("Encoder 2: Scatto a DESTRA (Tasto 28)");
+    }
+    if (res2 == DIR_CCW) {
+        enc2_CCW_Time = millis();
+        Serial.println("Encoder 2: Scatto a SINISTRA (Tasto 29)");
+    }
+    
+    if (millis() - enc2_CW_Time < ENC_HOLD_MS) bitSet(myData.buttons, 28);
+    if (millis() - enc2_CCW_Time < ENC_HOLD_MS) bitSet(myData.buttons, 29);
+
+
+    // --- 4. ASSI POTENZIOMETRO E "SMOOTHING" ---
+    uint8_t res3 = encoder3_pot.process();
+    // encoder4_pot.process(); // Ometti il 4 finché usi il Monitor Seriale
+
+    if (res3 == DIR_CW) {
+        Serial.print("Potenziometro 3: SU -> Valore: ");
+        Serial.println(encoder3_pot.count);
+    }
+    if (res3 == DIR_CCW) {
+        Serial.print("Potenziometro 3: GIU -> Valore: ");
+        Serial.println(encoder3_pot.count);
+    }
+
+    static float smoothAxis1 = 16383.0;
+    static float smoothAxis2 = 16383.0;
+    
+    // Filtro EMA
+    smoothAxis1 = (smoothAxis1 * 0.7) + (encoder3_pot.count * 0.3);
+    smoothAxis2 = (smoothAxis2 * 0.7) + (encoder4_pot.count * 0.3);
+    
+    myData.axis1 = (int16_t)smoothAxis1;
+    myData.axis2 = (int16_t)smoothAxis2;
+
+    // --- 5. AGGIORNAMENTO SCHERMO HUD E STANDBY ---
+    static int lastHUD_Axis1 = 16383;
+    static int lastHUD_Axis2 = 16383;
+
+    // Rileva i movimenti per lo schermo basandosi sul conto netto (prima dello smoothing)
+    if (abs(encoder3_pot.count - lastHUD_Axis1) > 1500) { 
+        lastActionText = "ASSE 1: " + String(encoder3_pot.count);
+        lastHUD_Axis1 = encoder3_pot.count;
+        userDidSomething = true;
+    }
+    if (abs(encoder4_pot.count - lastHUD_Axis2) > 1500) {
+        lastActionText = "ASSE 2: " + String(encoder4_pot.count);
+        lastHUD_Axis2 = encoder4_pot.count;
         userDidSomething = true;
     }
 
@@ -213,6 +236,10 @@ void loop() {
             if (bitRead(myData.buttons, i) && !bitRead(lastButtonsState, i)) {
                 if (i == 30 || i == 31) lastActionText = "ENC 1 (ROT)";
                 else if (i == 28 || i == 29) lastActionText = "ENC 2 (ROT)";
+                else if (i == 16) lastActionText = "ENC 1 (CLICK)";
+                else if (i == 17) lastActionText = "ENC 2 (CLICK)";
+                else if (i == 18) lastActionText = "ENC 3 (CLICK)";
+                else if (i == 19) lastActionText = "ENC 4 (CLICK)";
                 else lastActionText = "TASTO " + String(i + 1); 
                 userDidSomething = true;
             }
@@ -220,46 +247,26 @@ void loop() {
         lastButtonsState = myData.buttons;
     }
 
-    // --- 3. GESTIONE STANDBY E SLEEP ---
     if (userDidSomething) {
-        lastActionTime = millis();
-        lastActivityTime = millis(); 
-        if (!isScreenOn) {
-            isScreenOn = true;
-            showWelcomeMessage();
-        }
+        lastActionTime = millis(); lastActivityTime = millis(); 
+        if (!isScreenOn) { isScreenOn = true; showWelcomeMessage(); }
     }
 
-    if (millis() - lastActionTime > 5000) {
-        lastActionText = ""; 
-    }
-
-    // Deep Sleep automatico (1 ora)
+    if (millis() - lastActionTime > 5000) lastActionText = ""; 
+    
     if (millis() - lastActivityTime > SLEEP_TIMEOUT) {
-        turnOffScreen();
-        esp_sleep_enable_ext0_wakeup((gpio_num_t)POWER_BTN_PIN, 0); 
-        esp_deep_sleep_start();
+        turnOffScreen(); esp_sleep_enable_ext0_wakeup((gpio_num_t)POWER_BTN_PIN, 0); esp_deep_sleep_start();
     }
 
-    // Standby schermo (20 minuti)
-    if (millis() - lastActivityTime > SCREEN_TIMEOUT) {
-        if (isScreenOn) {
-            turnOffScreen();      
-            isScreenOn = false;     
-        }
+    if (millis() - lastActivityTime > SCREEN_TIMEOUT && isScreenOn) { turnOffScreen(); isScreenOn = false; }
+
+    if (millis() - lastBatCheck > 5000) { batteryPct = getBatteryPercentage(); lastBatCheck = millis(); }
+
+    // --- 6. TRASMISSIONE REGOLATA ESP-NOW ---
+    static unsigned long lastEspNowSend = 0;
+    if (millis() - lastEspNowSend > 20) {
+        esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
+        if (isScreenOn) updateHUD(batteryPct, masterConnected, lastActionText);
+        lastEspNowSend = millis();
     }
-
-    if (millis() - lastBatCheck > 5000) {
-        batteryPct = getBatteryPercentage();
-        lastBatCheck = millis();
-    }
-
-    // --- 4. TRASMISSIONE E HUD ---
-    esp_now_send(broadcastAddress, (uint8_t *) &myData, sizeof(myData));
-
-    if (isScreenOn) {
-        updateHUD(batteryPct, masterConnected, lastActionText);
-    }
-
-    delay(20); 
 }
