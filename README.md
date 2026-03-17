@@ -39,7 +39,7 @@ La libreria gestisce automaticamente le logiche di pull-up per la scansione dell
 
 ## 🔄 Encoder e Potenziometri (Assi)
 
-⚠️ **ATTENZIONE HARDWARE:** I pin `34`, `36` e `39` dell'ESP32 sono *Input-Only* e non possiedono resistenze di pull-up interne. I pulsanti degli Encoder 1, 2 e 3 necessitano obbligatoriamente di una **resistenza di pull-up esterna (es. 10kΩ)** collegata a 3.3V, altrimenti si verificheranno false pressioni (floating pins / crosstalk).
+⚠️ **ATTENZIONE HARDWARE:** I pin `34`, `36` e `39` dell'ESP32 sono *Input-Only* e non possiedono resistenze di pull-up interne. I pulsanti degli Encoder 1, 2 e 3 necessitano obbligatoriamente di una **resistenza di pull-up esterna (es. 10kΩ)** collegata a 3.3V oppure dei moduli ky-040, altrimenti si verificheranno false pressioni (floating pins / crosstalk); ATTENZIONE - Molti rivenditori dicono di avere il modulo ky-040 ma in verità sono cloni a basso costo hw-040 ai quali manca la terza resistenza (appunto quella del pulsante).
 
 ### Encoder 1 (Standard)
 | Segnale | Pin ESP32 | Tipo | Note |
@@ -55,14 +55,14 @@ La libreria gestisce automaticamente le logiche di pull-up per la scansione dell
 | **DT (B)** | `21` | `INPUT_PULLUP` | - |
 | **SW (Click)** | `36` | `INPUT` | ⚠️ **Richiede resistenza esterna a 3.3V** |
 
-### Encoder 3 (Potenziometro Virpil - Asse 1)
+### Encoder 3 (Potenziometro 1 - Asse 1)
 | Segnale | Pin ESP32 | Tipo | Note |
 | :--- | :---: | :---: | :--- |
 | **CLK (A)** | `22` | `INPUT_PULLUP` | - |
 | **DT (B)** | `23` | `INPUT_PULLUP` | - |
 | **SW (Click)** | `39` | `INPUT` | ⚠️ **Richiede resistenza esterna a 3.3V** |
 
-### Encoder 4 (Potenziometro Virpil - Asse 2)
+### Encoder 4 (Potenziometro 2 - Asse 2)
 | Segnale | Pin ESP32 | Tipo | Note |
 | :--- | :---: | :---: | :--- |
 | **CLK (A)** | `1`  | `INPUT_PULLUP` | (Attenzione: Pin usato dal Serial TX, ma disconnesso nel setup attuale) |
