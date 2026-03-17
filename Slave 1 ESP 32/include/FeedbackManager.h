@@ -2,19 +2,18 @@
 #define FEEDBACK_MANAGER_H
 
 #include <Arduino.h>
-#include <U8g2lib.h>
 #include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SH110X.h>
 
 namespace FeedbackManager {
     void init();
-    
-    // Gestione Schermo OLED
     void showBootScreen();
     void showWelcomeMessage();
-    void showReleaseMsg();
+    void updateHUD(int batteryPct, bool isConnected, String newAction);
     void showPowerOffCountdown(int secondsLeft);
     void turnOffScreen();
-    void updateHUD(int batteryPct, bool isConnected, String lastAction);
+    void showReleaseMsg();
 }
 
 #endif

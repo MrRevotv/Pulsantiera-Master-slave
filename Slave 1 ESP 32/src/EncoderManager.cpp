@@ -2,7 +2,7 @@
 #include "PowerManager.h"
 
 namespace EncoderManager {
-    
+
     // Inizializzazione degli oggetti CustomEncoder
     CustomEncoder encoder1(ENC1_PIN_A, ENC1_PIN_B, false);       
     CustomEncoder encoder2(ENC2_PIN_A, ENC2_PIN_B, false);      
@@ -11,7 +11,7 @@ namespace EncoderManager {
 
     uint32_t currentEncButtons = 0;
     
-    // Variabili per mantenere premuti gli encoder abbastanza a lungo per ESP-NOW
+    // Variabili per mantenere premuti gli encoder abbastanza a lungo
     unsigned long enc1_CW_Time = 0;
     unsigned long enc1_CCW_Time = 0;
     unsigned long enc2_CW_Time = 0;
@@ -49,7 +49,7 @@ namespace EncoderManager {
         if (res1 == DIR_CW) { enc1_CW_Time = millis(); activityDetected = true; }
         if (res1 == DIR_CCW) { enc1_CCW_Time = millis(); activityDetected = true; }
         
-        // Impulse Extender a 60ms
+        // Impulse Extender usando la costante ENC_HOLD_MS dal Config.h
         if (millis() - enc1_CW_Time < ENC_HOLD_MS) bitSet(currentEncButtons, 30);
         if (millis() - enc1_CCW_Time < ENC_HOLD_MS) bitSet(currentEncButtons, 31);
         
@@ -65,11 +65,11 @@ namespace EncoderManager {
         uint8_t res3 = encoder3_pot.process();
         uint8_t res4 = encoder4_pot.process();
         
-        if (res3 != R_START || res4 != R_START) {
+        if (res3 != 0 || res4 != 0) {
             activityDetected = true;
         }
 
-        // Filtro EMA: 70% vecchio valore, 30% nuovo scatto. Rende il movimento fluido su Virpil.
+        // Filtro EMA: 70% vecchio valore, 30% nuovo scatto.
         smoothAxis1 = (smoothAxis1 * 0.7) + (encoder3_pot.count * 0.3);
         smoothAxis2 = (smoothAxis2 * 0.7) + (encoder4_pot.count * 0.3);
 

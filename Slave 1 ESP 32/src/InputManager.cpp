@@ -55,8 +55,8 @@ namespace InputManager {
 
         // 2. Leggi i Click degli Encoder (Bit 16, 17, 18, 19)
         // Usiamo !digitalRead perché i tasti chiudono a massa (LOW)
-        if (!digitalRead(ENC1_SW)) bitSet(currentButtonsState, 16); else bitClear(currentButtonsState, 16);
-        if (!digitalRead(ENC2_SW)) bitSet(currentButtonsState, 17); else bitClear(currentButtonsState, 17);
+       // if (!digitalRead(ENC1_SW)) bitSet(currentButtonsState, 16); else bitClear(currentButtonsState, 16);
+       // if (!digitalRead(ENC2_SW)) bitSet(currentButtonsState, 17); else bitClear(currentButtonsState, 17);Me li sono disabilitati temporaneamente in attessa che arrivi il materiale.
         if (!digitalRead(ENC3_SW)) bitSet(currentButtonsState, 18); else bitClear(currentButtonsState, 18);
         if (!digitalRead(ENC4_SW)) bitSet(currentButtonsState, 19); else bitClear(currentButtonsState, 19);
 
@@ -80,4 +80,4 @@ namespace InputManager {
 
         return stateChanged;
     }
-}
+} // <-- Parentesi extra rimossa!

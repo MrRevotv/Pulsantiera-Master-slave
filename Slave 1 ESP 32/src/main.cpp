@@ -6,33 +6,44 @@
 #include "EncoderManager.h"
 #include "FeedbackManager.h"
 
-// Crea il pacchetto dati globale usando la struttura definita in Config.h
 struct_message myData;
 
 void setup() {
-    // 1. Inizializza l'hardware visivo per dare subito un feedback all'utente
     FeedbackManager::init();
     FeedbackManager::showBootScreen();
+    FeedbackManager::showWelcomeMessage();
 
-    // 2. Inizializza i sensori e la logica
     PowerManager::init();
     InputManager::init();
     EncoderManager::init();
 
-    // 3. Inizializza la comunicazione radio verso il Master
     CommsManager::init(MASTER_MAC_ADDRESS);
-
-    // 4. Assegna l'ID a questa scheda
     myData.slaveID = SLAVE_ID;
 }
 
 void loop() {
-    // --- FASE 1: GESTIONE ENERGIA ---
+    // --- FASE 1: GESTIONE ENERGIA E SPEGNIMENTO ---
     PowerManager::update();
     
     if (PowerManager::isTurningOff()) {
-        FeedbackManager::showPowerOffCountdown(PowerManager::getTurnOffCountdown());
-        return; // Blocca tutto il resto finché il tasto è premuto
+        if (PowerManager::getTurnOffCountdown() <= 0) {
+            
+            // 1. Mostra il messaggio a schermo
+            FeedbackManager::showReleaseMsg();
+            
+            // 2. Blocca il sistema finché il dito è sul pulsante
+            while(!digitalRead(POWER_BTN_PIN)) {
+                delay(50);
+            }
+            
+            // 3. Il dito è stato tolto. Spegni i pixel e vai a nanna.
+            PowerManager::executeDeepSleep(); 
+            
+        } else {
+            // Mostra il conto alla rovescia (ora partirà da 3)
+            FeedbackManager::showPowerOffCountdown(PowerManager::getTurnOffCountdown());
+        }
+        return; // Salta il resto del loop finché siamo in fase di spegnimento
     }
 
     // --- FASE 2: LETTURA INPUT FISICI ---
@@ -40,10 +51,7 @@ void loop() {
     bool encodersChanged = EncoderManager::readAll();
 
     // --- FASE 3: IMPACCHETTAMENTO DATI ---
-    // Unisce i bit della matrice (0-15) e i click encoder (16-19) con le rotazioni (28-31)
-    myData.buttons = InputManager::getButtonsState() | EncoderManager::getButtonsState();
-    
-    // Assegna i due potenziometri virtuali
+    myData.buttons = (InputManager::getButtonsState() & 0x000FFFFF) | EncoderManager::getButtonsState();
     myData.axis1 = EncoderManager::getAxis(1);
     myData.axis2 = EncoderManager::getAxis(2);
 
@@ -62,6 +70,5 @@ void loop() {
     }
 
     // --- FASE 5: TRASMISSIONE ---
-    // La funzione si occupa da sola di rispettare il limite di 20ms
     CommsManager::sendIfReady(myData);
 }
