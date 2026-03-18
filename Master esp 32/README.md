@@ -1,8 +1,3 @@
----
-
-### 2. `README.md` per il Master ESP32-S3
-
-```markdown
 # 🔌 Pinout e Cablaggi - ESP32-S3 Master
 
 Questo documento descrive in dettaglio l'assegnazione dei pin per il modulo **Master** (ESP32-S3). Questo modulo agisce come ricevitore centrale (tramite ESP-NOW) e si interfaccia direttamente al PC simulando un singolo joystick USB, gestendo parallelamente i propri input hardware.
