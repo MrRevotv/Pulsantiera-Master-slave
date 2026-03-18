@@ -4,6 +4,7 @@
 #include "DisplayManager.h"
 #include "InputManager.h"
 #include "CommsManager.h"
+#include "BuzzerManager.h" // Aggiunto
 
 USBHID hid;
 SimGamepad Gamepad;
@@ -25,12 +26,14 @@ void setup() {
     // 3. Setup Hardware e Rete
     initInputs();
     initComms();
+    initBuzzer(); // Inizializza il pin del buzzer
 }
 
 void loop() {
     readInputs();           // Legge tasti ed encoder (Master)
     checkCommsTimeout();    // Controlla se gli Slave sono vivi
     updateDisplay();        // Aggiorna la UI (Normale o Debug)
+    handleBuzzer();         // Gestisce i bip senza bloccare il loop
     
     Gamepad.send();         // Invia i dati a Windows
     delay(10); 

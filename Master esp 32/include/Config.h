@@ -10,6 +10,8 @@
 #define ENC2_DT 10
 #define ENC2_SW 11
 
+#define BUZZER_PIN 2 // Pin assegnato al Buzzer
+
 const int NUM_BUTTONS = 16;
 const int buttonPins[NUM_BUTTONS] = {12, 13, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 47, 48, 45};
 
@@ -46,6 +48,10 @@ struct SystemState {
     bool slave3Connected = false;
     unsigned long lastSlave3Msg = 0;
     int16_t slave3Axis1 = 0;
+
+    // --- STATO BUZZER ---
+    bool triggerConnectBeep = false;    // Richiede il doppio bip
+    bool triggerDisconnectBeep = false; // Richiede il bip lungo
 };
 
 // Dichiariamo che queste variabili esistono nel main.cpp

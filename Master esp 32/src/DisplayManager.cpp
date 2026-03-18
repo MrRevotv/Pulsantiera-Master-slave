@@ -70,7 +70,7 @@ void drawHUD() {
     // --- HEADER FISSO ---
     display.setCursor(0, 0);
     display.print(CORP_NAME);
-    display.print("/MST_0");
+    display.print("//MASTER 3.23");
     display.drawLine(0, 9, 128, 9, SH110X_WHITE);
 
     // --- LOGICA SCHERMO PRINCIPALE ---
@@ -100,7 +100,7 @@ void drawHUD() {
             
             display.setTextSize(1);
             display.setCursor(30, 42);
-            display.print("OPERATIVA //");
+            display.print("OPERATIVA");
         } else {
             // FASE 2: Mostra dinamicamente quali Slave sono attivi
             display.setCursor(0, 14);
