@@ -55,16 +55,24 @@ void loop() {
     myData.axis1 = EncoderManager::getAxis(1);
     myData.axis2 = EncoderManager::getAxis(2);
 
-    // --- FASE 4: AGGIORNAMENTO SCHERMO ---
+// --- FASE 4: AGGIORNAMENTO SCHERMO ---
+    static unsigned long lastDisplayUpdate = 0; // Timer per lo schermo
+
     if (PowerManager::isScreenOn()) {
         String latestAction = "";
         if (inputsChanged) latestAction = InputManager::getLastActionText();
         
-        FeedbackManager::updateHUD(
-            PowerManager::getBatteryPercentage(), 
-            CommsManager::isConnected(), 
-            latestAction
-        );
+        // AGGIORNA LO SCHERMO SOLO SE:
+        // 1. È stato premuto un tasto (inputsChanged == true)
+        // 2. Sono passati almeno 250ms dall'ultimo aggiornamento (per l'animazione)
+        if (inputsChanged || (millis() - lastDisplayUpdate > 250)) {
+            FeedbackManager::updateHUD(
+                PowerManager::getBatteryPercentage(), 
+                CommsManager::isConnected(), 
+                latestAction
+            );
+            lastDisplayUpdate = millis(); // Resetta il timer
+        }
     } else {
         FeedbackManager::turnOffScreen();
     }

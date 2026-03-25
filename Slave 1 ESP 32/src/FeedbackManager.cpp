@@ -16,6 +16,7 @@ namespace FeedbackManager {
 
     void init() {
         Wire.begin(OLED_SDA, OLED_SCL);
+        Wire.setClock(400000); 
         delay(250);
         if (!display.begin(i2c_Address, true)) {
             Serial.println("Errore OLED");
